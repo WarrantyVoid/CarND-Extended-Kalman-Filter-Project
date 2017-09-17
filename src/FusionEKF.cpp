@@ -11,105 +11,126 @@ using std::vector;
 /*
  * Constructor.
  */
-FusionEKF::FusionEKF() {
-  is_initialized_ = false;
-
-  previous_timestamp_ = 0;
-
-  // initializing matrices
-  R_laser_ = MatrixXd(2, 2);
-  R_radar_ = MatrixXd(3, 3);
-  H_laser_ = MatrixXd(2, 4);
-  Hj_ = MatrixXd(3, 4);
-
+FusionEKF::FusionEKF()
+  : mEkf()
+  , mIsInitialized(false)
+  , mPreviousTimestamp(0ull)
+  , mRLaser(2, 2)
+  , mRRadar(3, 3)
+  , mHLaser(2, 4)
+  , mHjRadar(3, 4)
+{
   //measurement covariance matrix - laser
-  R_laser_ << 0.0225, 0,
-        0, 0.0225;
+  mRLaser << 0.0225, 0,
+             0     , 0.0225;
 
   //measurement covariance matrix - radar
-  R_radar_ << 0.09, 0, 0,
-        0, 0.0009, 0,
-        0, 0, 0.09;
+  mRRadar << 0.09, 0     , 0,
+             0   , 0.0009, 0,
+             0   , 0     , 0.09;
 
-  /**
-  TODO:
-    * Finish initializing the FusionEKF.
-    * Set the process and measurement noises
-  */
+  //measurement translation matrix - laser
+  mHLaser << 1, 0, 0, 0,
+             0, 1, 0, 0;
+}
 
+FusionEKF::~FusionEKF()
+{
 
 }
 
-/**
-* Destructor.
-*/
-FusionEKF::~FusionEKF() {}
+void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurementPack)
+{
+  if (!mIsInitialized)
+  {
+    /*****************************************************************************
+     *  Initialization
+     ****************************************************************************/
+    // Uncertainty and movement matrices are independent from sensor
+    TMatrix P(4, 4);
+    P << 1, 0, 0   , 0,
+         0, 1, 0   , 0,
+         0, 0, 1000, 0,
+         0, 0, 0   , 1000;
+    TMatrix F(4, 4);
+    F << 1, 0, 1, 0,
+         0, 1, 0, 1,
+         0, 0, 1, 0,
+         0, 0, 0, 1;
+    TMatrix Q(4, 4);
 
-void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurement_pack) {
-
-
-  /*****************************************************************************
-   *  Initialization
-   ****************************************************************************/
-  if (!is_initialized_) {
-    /**
-    TODO:
-      * Initialize the state ekf_.x_ with the first measurement.
-      * Create the covariance matrix.
-      * Remember: you'll need to convert radar from polar to cartesian coordinates.
-    */
-    // first measurement
-    cout << "EKF: " << endl;
-    ekf_.x_ = VectorXd(4);
-    ekf_.x_ << 1, 1, 1, 1;
-
-    if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
-      /**
-      Convert radar from polar to cartesian coordinates and initialize state.
-      */
+    switch (measurementPack.sensorType)
+    {
+      case MeasurementPackage::RADAR:
+      {
+        // Convert x and y and v from polar
+        TVector x(4);
+        x(0) = measurementPack.rawMeasurements(0) * cos(measurementPack.rawMeasurements(1));
+        x(1) = measurementPack.rawMeasurements(0) * sin(measurementPack.rawMeasurements(1));
+        x(2) = measurementPack.rawMeasurements(2) * cos(measurementPack.rawMeasurements(1));
+        x(3) = measurementPack.rawMeasurements(2) * sin(measurementPack.rawMeasurements(1));
+        mEkf.Initialize(x, P, F);
+      }
+      break;
+    case MeasurementPackage::LASER:
+      {
+        // Just use x and y directly
+        TVector x(4);
+        x(0) = measurementPack.rawMeasurements(0);
+        x(1) = measurementPack.rawMeasurements(1);
+        mEkf.Initialize(x, P, F);
+      }
+      break;
     }
-    else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER) {
-      /**
-      Initialize state.
-      */
+
+    // done initializing
+    mIsInitialized = true;
+  }
+  else
+  {
+    /*****************************************************************************
+     *  Prediction
+     ****************************************************************************/
+    // predict state and new uncertainty given time delta and acceleration noise
+    float dt = (measurementPack.timestamp - mPreviousTimestamp) / 1000000.0f;
+    mEkf.Predict(dt, 9.0f, 9.0f);
+
+    /*****************************************************************************
+     *  Update
+     ****************************************************************************/
+    switch (measurementPack.sensorType)
+    {
+    case MeasurementPackage::RADAR:
+      {
+        // convert current prediction to polar and calculate measurement delta
+        const TVector &x(mEkf.GetState());
+        float roh = sqrt(x(0) * x(0) + x(1) * x(1));
+        float phi = atan2(x(1), x(0));
+        float rohdot = (x(0) * x(2) + x(1) * x(3)) / roh;
+        TVector zd(3);
+        zd << measurementPack.rawMeasurements(0) - roh,
+              GetTools().CalculateAngleDelta(phi, measurementPack.rawMeasurements(1)),
+              measurementPack.rawMeasurements(2) - rohdot;
+
+        // calculate new approximation for measurement matrix
+        mHjRadar = GetTools().CalculateRadarJacobian(x);
+
+        // finally update
+        mEkf.UpdateEKF(zd, mHjRadar, mRRadar);
+      }
+      break;
+    case MeasurementPackage::LASER:
+      // just update
+      mEkf.Update(measurementPack.rawMeasurements, mHLaser, mRLaser);
+      break;
     }
-
-    // done initializing, no need to predict or update
-    is_initialized_ = true;
-    return;
   }
-
-  /*****************************************************************************
-   *  Prediction
-   ****************************************************************************/
-
-  /**
-   TODO:
-     * Update the state transition matrix F according to the new elapsed time.
-      - Time is measured in seconds.
-     * Update the process noise covariance matrix.
-     * Use noise_ax = 9 and noise_ay = 9 for your Q matrix.
-   */
-
-  ekf_.Predict();
-
-  /*****************************************************************************
-   *  Update
-   ****************************************************************************/
-
-  /**
-   TODO:
-     * Use the sensor type to perform the update step.
-     * Update the state and covariance matrices.
-   */
-
-  if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
-    // Radar updates
-  } else {
-    // Laser updates
-  }
-
-  // print the output
-  cout << "x_ = " << ekf_.x_ << endl;
-  cout << "P_ = " << ekf_.P_ << endl;
+  //std::cout << mEkf << std::endl;
+  mPreviousTimestamp = measurementPack.timestamp;
 }
+
+TVector FusionEKF::GetEstimate() const
+{
+  return mEkf.GetState();
+}
+

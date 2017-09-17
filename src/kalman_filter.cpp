@@ -1,39 +1,71 @@
 #include "kalman_filter.h"
 
-using Eigen::MatrixXd;
-using Eigen::VectorXd;
+KalmanFilter::KalmanFilter()
+: mX()
+, mP()
+, mF()
+, mQ()
+, mI()
+{
 
-KalmanFilter::KalmanFilter() {}
-
-KalmanFilter::~KalmanFilter() {}
-
-void KalmanFilter::Init(VectorXd &x_in, MatrixXd &P_in, MatrixXd &F_in,
-                        MatrixXd &H_in, MatrixXd &R_in, MatrixXd &Q_in) {
-  x_ = x_in;
-  P_ = P_in;
-  F_ = F_in;
-  H_ = H_in;
-  R_ = R_in;
-  Q_ = Q_in;
 }
 
-void KalmanFilter::Predict() {
-  /**
-  TODO:
-    * predict the state
-  */
+KalmanFilter::~KalmanFilter()
+{
+
 }
 
-void KalmanFilter::Update(const VectorXd &z) {
-  /**
-  TODO:
-    * update the state by using Kalman Filter equations
-  */
+void KalmanFilter::Initialize(TVector &x, TMatrix &P, TMatrix &F)
+{
+  mX = x;
+  mP = P;
+  mF = F;
+  mI = TMatrix::Identity(mX.size(), mX.size());
 }
 
-void KalmanFilter::UpdateEKF(const VectorXd &z) {
-  /**
-  TODO:
-    * update the state by using Extended Kalman Filter equations
-  */
+void KalmanFilter::Predict(float dTime, float noise_ax, float noise_ay)
+{
+  // modify the F matrix so that the time is integrated
+  mF(0, 2) = dTime;
+  mF(1, 3) = dTime;
+
+  // set the process covariance matrix Q based on time and noice
+  float dt_2 = dTime * dTime;
+  float dt_3 = dt_2 * dTime;
+  float dt_4 = dt_3 * dTime;
+  float n_ax = noise_ax;
+  float n_ay = noise_ay;
+  mQ = TMatrix(4, 4);
+  mQ << dt_4/4*n_ax, 0          , dt_3/2*n_ax, 0,
+        0          , dt_4/4*n_ay, 0          , dt_3/2*n_ay,
+        dt_3/2*n_ax, 0          , dt_2*n_ax  , 0,
+        0          , dt_3/2*n_ay, 0          , dt_2*n_ay;
+
+  // predict
+  mX = mF * mX;
+  mP = mF * mP * mF.transpose() + mQ;
+}
+
+void KalmanFilter::Update(const TVector &z, const TMatrix &H, const TMatrix &R)
+{
+  TMatrix Ht = H.transpose();
+
+  TVector y = z - H * mX;
+  TMatrix S = H * mP * Ht + R;
+  TMatrix K = mP * Ht * S.inverse();
+
+  mX = mX + (K * y);
+  mP = (mI - K * H) * mP;
+}
+
+void KalmanFilter::UpdateEKF(const TVector &zd, const TMatrix &H, const TMatrix &R)
+{
+  TMatrix Ht = H.transpose();
+
+  TVector y = zd;
+  TMatrix S = H * mP * Ht + R;
+  TMatrix K = mP * Ht * S.inverse();
+
+  mX = mX + (K * y);
+  mP = (mI - K * H) * mP;
 }
