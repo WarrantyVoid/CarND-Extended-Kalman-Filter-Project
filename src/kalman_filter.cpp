@@ -46,25 +46,21 @@ void KalmanFilter::Predict(float dTime, float noise_ax, float noise_ay)
   mP = mF * mP * mF.transpose() + mQ;
 }
 
-void KalmanFilter::Update(const TVector &z, const TMatrix &H, const TMatrix &R)
+void KalmanFilter::UpdateKF(const TVector &z, const TMatrix &H, const TMatrix &R)
 {
-  TMatrix Ht = H.transpose();
-
-  TVector y = z - H * mX;
-  TMatrix S = H * mP * Ht + R;
-  TMatrix K = mP * Ht * S.inverse();
-
-  mX = mX + (K * y);
-  mP = (mI - K * H) * mP;
+  Update(z - H * mX, H, R);
 }
 
 void KalmanFilter::UpdateEKF(const TVector &zd, const TMatrix &H, const TMatrix &R)
 {
-  TMatrix Ht = H.transpose();
+  Update(zd, H, R);
+}
 
-  TVector y = zd;
-  TMatrix S = H * mP * Ht + R;
-  TMatrix K = mP * Ht * S.inverse();
+void KalmanFilter::Update(const TVector &y,const TMatrix &H, const TMatrix &R)
+{
+  TMatrix PHt = mP * H.transpose();
+  TMatrix S = H * PHt + R;
+  TMatrix K = PHt * S.inverse();
 
   mX = mX + (K * y);
   mP = (mI - K * H) * mP;

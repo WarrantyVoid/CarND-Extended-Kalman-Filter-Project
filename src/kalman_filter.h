@@ -38,7 +38,7 @@ public:
   * @param H The measurement matrix
   * @param R The measurement convariance matrix
   **/
-  void Update(const TVector &z, const TMatrix &H, const TMatrix &R);
+  void UpdateKF(const TVector &z, const TMatrix &H, const TMatrix &R);
 
   /**
   * Updates the state by using Extended Kalman Filter equations
@@ -54,6 +54,11 @@ public:
   inline const TVector &GetState() const;
 
 protected:
+  /**
+  * Helper function to be used by update functions.
+  **/
+  void Update(const TVector &y, const TMatrix &H, const TMatrix &R);
+
   /**
   * Serialized filer state into output stream.
   **/

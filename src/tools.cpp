@@ -87,9 +87,11 @@ TMatrix Tools::CalculateRadarJacobian(const TVector &xState) const
   float p2 = py*vx;
 
   //check division by zero
-  if(fabs(c1) < std::numeric_limits<float>::epsilon())
+  if(isZero(c1))
   {
     std::cout << "CalculateJacobian () - Error - Division by Zero" << std::endl;
+    Hj << 0, 0, 0, 0,
+          0, 0, 0, 0;
     return Hj;
   }
 
@@ -99,4 +101,9 @@ TMatrix Tools::CalculateRadarJacobian(const TVector &xState) const
          py*(p2-p1)/c3, px*(p1-p2)/c3, px/c2, py/c2;
 
   return Hj;
+}
+
+bool Tools::isZero(float f) const
+{
+  return fabs(f) < std::numeric_limits<float>::epsilon();
 }

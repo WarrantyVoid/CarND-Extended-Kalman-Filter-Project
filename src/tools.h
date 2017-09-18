@@ -26,6 +26,11 @@ public:
   * translation function.
   **/
   TMatrix CalculateRadarJacobian(const TVector &xState) const;
+
+  /**
+  * A helper method to calculate whether a float represents zero.
+  **/
+  bool isZero(float f) const;
 };
 
 /**

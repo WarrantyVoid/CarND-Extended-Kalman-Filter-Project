@@ -106,7 +106,7 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurementPack)
         const TVector &x(mEkf.GetState());
         float roh = sqrt(x(0) * x(0) + x(1) * x(1));
         float phi = atan2(x(1), x(0));
-        float rohdot = (x(0) * x(2) + x(1) * x(3)) / roh;
+        float rohdot = GetTools().isZero(roh) ? (x(2) + x(3)) / 2 : (x(0) * x(2) + x(1) * x(3)) / roh;
         TVector zd(3);
         zd << measurementPack.rawMeasurements(0) - roh,
               GetTools().CalculateAngleDelta(phi, measurementPack.rawMeasurements(1)),
@@ -121,7 +121,7 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurementPack)
       break;
     case MeasurementPackage::LASER:
       // just update
-      mEkf.Update(measurementPack.rawMeasurements, mHLaser, mRLaser);
+      mEkf.UpdateKF(measurementPack.rawMeasurements, mHLaser, mRLaser);
       break;
     }
   }
